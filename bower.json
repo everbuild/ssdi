@@ -1,0 +1,26 @@
+{
+  "name": "ssdi",
+  "main": "ssdi.js",
+  "version": "0.0.1",
+  "homepage": "https://github.com/everbuild/ssdi",
+  "authors": [
+    "Evert Bauwens"
+  ],
+  "description": "Super Simple Dependency Injection for JavaScript",
+  "moduleType": [
+    "globals"
+  ],
+  "license": "MIT",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "q": "#1.0.1",
+    "zeptojs": "#1.1.6",
+    "underscore": "#1.7.0"
+  }
+}
