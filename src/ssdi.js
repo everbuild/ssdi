@@ -29,7 +29,6 @@
     function ObjectManager() {
         this.objects = {};
         this.factories = {};
-        this.stack = []; // TODO track resolution stack to give better errors
     }
 
 
@@ -96,9 +95,15 @@
         }
 
         function checkDeps() {
+            var msg = 'dependencies should be an array of strings';
             if(!Array.isArray(deps)) {
-                throw 'dependencies should be an array of strings';
+                throw msg;
             }
+            deps.each(function (dep) {
+                if(typeof dep !== 'string') {
+                    throw msg;
+                }
+            });
         }
 
         function checkFunc() {
