@@ -1,12 +1,6 @@
 (function () {
     "use strict";
 
-    function assert(exp, msg) {
-        if(!exp) {
-            throw msg;
-        }
-    }
-
     function FactoryHolder(name) {
         this.name = name;
         this.defer = Q.defer();
@@ -21,8 +15,14 @@
 
 
     function getDependenciesFromSignature(func) {
-        // TODO
-        return [];
+        var m = /function(\s+\w+)?\s*\((\s*\w+\s*(,\s*\w+\s*)*)\)/i.exec(func.toString());
+        if(m && m[2]) {
+            return m[2].split(',').map(function (name) {
+                return name.trim();
+            });
+        } else {
+            return [];
+        }
     }
 
 
@@ -51,34 +51,61 @@
      */
     ObjectManager.prototype.define = function () {
         var name, deps, func;
-        if(arguments.length >= 3) {
-            name = arguments[0];
-            deps = arguments[1];
-            func = arguments[2];
-            if(arguments.length > 3) {
-                console.warn('define has more than 3 arguments; they will be ignored!');
+
+        try {
+            if(arguments.length >= 3) {
+                name = arguments[0];
+                deps = arguments[1];
+                func = arguments[2];
+                if(arguments.length > 3) {
+                    console.warn('define has more than 3 arguments; they will be ignored!');
+                }
+                checkName();
+                checkDeps();
+                checkFunc();
+            } else if(arguments.length == 2) {
+                name = arguments[0];
+                func = arguments[1];
+                checkName();
+                checkFunc();
+                deps = getDependenciesFromSignature(func);
+            } else if(arguments.length == 1) {
+                func = arguments[0];
+                checkFunc();
+                if(!this.expectedName) {
+                    throw "can't guess name";
+                }
+                name = this.expectedName;
+                deps = getDependenciesFromSignature(func);
+            } else {
+                throw 'define should have 1 to 3 arguments';
             }
-            assert(typeof name === 'string', 'name should be a string');
-            assert(Array.isArray(deps), 'dependencies should be an array of strings');
-            assert(typeof func === 'function', 'factory function should be a function');
-        } else if(arguments.length == 2) {
-            name = arguments[0];
-            func = arguments[1];
-            assert(typeof name === 'string', 'name should be a string');
-            assert(typeof func === 'function', 'factory function should be a function');
-            deps = getDependenciesFromSignature(func);
-        } else if(arguments.length == 1) {
-            func = arguments[0];
-            assert(typeof func === 'function', 'factory function should be a function');
-            if(!this.expectedName) {
-                throw "can't guess name";
-            }
-            name = this.expectedName;
-            deps = getDependenciesFromSignature(func);
-        } else {
-            throw 'define should have 1 to 3 arguments';
+
+            this.defineInternal(name, deps, func);
+
+            return true;
+        } catch (msg) {
+            console.error(msg + " - url: " + (this.currentUrl || 'unknown'));
+            return false;
         }
-        this.defineInternal(name, deps, func);
+
+        function checkName() {
+            if(typeof name !== 'string') {
+                throw 'name should be a string';
+            }
+        }
+
+        function checkDeps() {
+            if(!Array.isArray(deps)) {
+                throw 'dependencies should be an array of strings';
+            }
+        }
+
+        function checkFunc() {
+            if(typeof func !== 'function') {
+                throw 'factory function should be a function';
+            }
+        }
     };
 
 
@@ -138,23 +165,22 @@
         var mgr = this;
         var holder = this.factories[name] = new FactoryHolder(name);
         var url = mgr.resolveUrl(name);
-        $.ajax({
-            url: url,
-            timeout: 5000,
-            dataType: 'text',
-            success: function (code) {
+        ajaxGet(url)
+            .then(function (code) {
                 mgr.expectedName = name;
+                mgr.currentUrl = url;
                 eval('(function () {"use strict";' + code + '})();');
                 mgr.expectedName = undefined;
+                mgr.currentUrl = undefined;
                 if(!holder.resolved) {
                     console.error('No object "' + name + '" defined in "' + url + '"');
+                    holder.defer.reject();
                 }
-            },
-            error: function () {
+            })
+            .catch(function () {
                 console.error('Can\'t load "' + url + '"');
                 holder.defer.reject();
-            }
-        });
+            });
         return holder.promise;
     };
 
@@ -168,13 +194,51 @@
 
     ObjectFactory.prototype.create = function (mgr) {
         var func = this.func;
-        var depObjsPromises = _(this.deps).map(function (name) {
+        var depObjsPromises = this.deps.map(function (name) {
             return mgr.get(name);
         });
         return Q.all(depObjsPromises).then(function (depObjs) {
             return func.apply(mgr, depObjs);
         });
     };
+
+    /**
+     * Perform an ajax GET request to fetch text.
+     * This is a stripped version of Zepto's ajax function
+     * @param url
+     * @return {promise}
+     */
+    function ajaxGet(url){
+        var def = Q.defer();
+        var protocol = /^([\w-]+:)\/\//.test(url) ? RegExp.$1 : window.location.protocol;
+        var xhr = new window.XMLHttpRequest();
+
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState == 4) {
+                xhr.onreadystatechange = null;
+                clearTimeout(abortTimeout);
+                if ((xhr.status >= 200 && xhr.status < 300) || xhr.status == 304 || (xhr.status === 0 && protocol == 'file:')) {
+                    def.resolve(xhr.responseText);
+                } else {
+                    def.reject(xhr.statusText || 'abort');
+                }
+            }
+        };
+
+        xhr.open('GET', url);
+
+        xhr.setRequestHeader('Accept', 'text/plain');
+
+        var abortTimeout = setTimeout(function () {
+            xhr.onreadystatechange = null;
+            xhr.abort();
+            def.reject('timeout');
+        }, 5000);
+
+        xhr.send();
+
+        return def.promise;
+    }
 
     window.objects = new ObjectManager();
 

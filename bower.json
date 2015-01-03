@@ -19,8 +19,6 @@
     "tests"
   ],
   "dependencies": {
-    "q": "#1.0.1",
-    "zeptojs": "#1.1.6",
-    "underscore": "#1.7.0"
+    "q": "#1.0.1"
   }
 }
